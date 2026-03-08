@@ -81,7 +81,16 @@
                     <!-- Excel Import -->
                     <div>
                         <h3 class="text-sm font-bold text-slate-700 mb-2">Import Excel Vocabulary</h3>
-                        <p class="text-xs text-slate-500 mb-4">Format: 3 columns (Chinese | Pinyin | English). No headers.</p>
+                        
+                        <!-- NEW FORMAT NOTE -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-800">
+                            <p class="font-bold mb-1">Valid Excel Format (.xlsx):</p>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li><strong>Exactly 3 columns</strong> in order: Chinese, Pinyin, English.</li>
+                                <li><strong>No header row.</strong> Start data directly on row 1.</li>
+                                <li>Example: <code>你好 | nǐ hǎo | hello</code></li>
+                            </ul>
+                        </div>
                         
                         <label class="block">
                             <span class="sr-only">Choose excel file</span>
@@ -98,9 +107,9 @@
                     <!-- State Import/Export -->
                     <div>
                         <h3 class="text-sm font-bold text-slate-700 mb-2">Memory File (State)</h3>
-                        <p class="text-xs text-slate-500 mb-4">Save or load your vocabulary pool and review history.</p>
+                        <p class="text-xs text-slate-500 mb-4">Save or load your entire vocabulary pool and review history so you don't lose progress when closing the browser.</p>
                         
-                        <div class="flex flex-wrap gap-2">
+                        <div class="flex flex-wrap gap-2 mt-auto">
                             <button onclick="exportState()" class="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-700 transition">
                                 Export Memory (.json)
                             </button>
@@ -127,10 +136,14 @@
             </div>
 
             <!-- Main Card -->
-            <div class="bg-white rounded-2xl shadow-md border border-slate-200 p-12 text-center mb-6 min-h-[250px] flex items-center justify-center">
+            <div class="bg-white rounded-2xl shadow-md border border-slate-200 p-12 text-center mb-6 min-h-[250px] flex flex-col items-center justify-center">
                 <h2 id="main-card-text" class="text-6xl font-bold text-slate-800 tracking-wide">
                     <!-- Dynamic Content -->
                 </h2>
+                <!-- Extra Info for 3rd data point -->
+                <div id="extra-info" class="mt-4 text-2xl font-medium text-indigo-600 opacity-0 transition-opacity duration-300 min-h-[2rem]">
+                    <!-- 3rd info populated here -->
+                </div>
             </div>
 
             <!-- Choices -->
@@ -351,6 +364,12 @@
             const vocab = activeSession.queue[activeSession.currentIndex];
             document.getElementById('current-card-num').textContent = activeSession.currentIndex + 1;
 
+            // Reset extra info (hidden at start of card)
+            const extraInfo = document.getElementById('extra-info');
+            extraInfo.classList.remove('opacity-100');
+            extraInfo.classList.add('opacity-0');
+            extraInfo.textContent = '';
+
             // Render Main Card
             const mainEl = document.getElementById('main-card-text');
             if (activeSession.mode === 'chinese') {
@@ -371,14 +390,22 @@
 
             choices.forEach(choiceVocab => {
                 const btn = document.createElement('button');
-                btn.className = "choice-btn w-full p-4 bg-white border-2 border-slate-200 rounded-xl text-lg font-medium text-slate-700 hover:bg-slate-50 hover:border-indigo-300 transition-all text-left flex items-center justify-between";
+                btn.className = "choice-btn w-full p-4 bg-white border-2 border-slate-200 rounded-xl font-medium text-slate-700 hover:bg-slate-50 hover:border-indigo-300 transition-all text-left flex items-center justify-between";
                 
                 let choiceText = '';
-                if (activeSession.mode === 'chinese') choiceText = choiceVocab.pinyin;
-                else if (activeSession.mode === 'pinyin') choiceText = choiceVocab.english;
-                else choiceText = choiceVocab.chinese;
+                let textClass = 'text-lg'; // Default size
 
-                btn.innerHTML = `<span>${choiceText}</span> <span class="indicator opacity-0 w-6 h-6 flex items-center justify-center rounded-full text-white text-sm"></span>`;
+                // If we're guessing Chinese from English, make the buttons larger
+                if (activeSession.mode === 'chinese') {
+                    choiceText = choiceVocab.pinyin;
+                } else if (activeSession.mode === 'pinyin') {
+                    choiceText = choiceVocab.english;
+                } else {
+                    choiceText = choiceVocab.chinese;
+                    textClass = 'text-4xl py-1'; // 2x larger for Chinese character readability
+                }
+
+                btn.innerHTML = `<span class="${textClass}">${choiceText}</span> <span class="indicator opacity-0 w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-full text-white text-sm"></span>`;
                 
                 btn.onclick = () => handleChoice(btn, choiceVocab.id === vocab.id, vocab);
                 container.appendChild(btn);
@@ -389,17 +416,40 @@
             let options = [correctVocab];
             let available = state.vocabList.filter(v => v.id !== correctVocab.id);
             
-            // Shuffle and pick 2 wrong options
-            available.sort(() => 0.5 - Math.random());
-            if (available.length >= 1) options.push(available[0]);
-            if (available.length >= 2) options.push(available[1]);
+            if (activeSession.mode === 'chinese') {
+                // Syllable matching logic for Pinyin
+                const countSyllables = (str) => str.trim().split(/\s+/).filter(s => s.length > 0).length;
+                const targetSyllables = countSyllables(correctVocab.pinyin);
+                
+                let sameSyllables = available.filter(v => countSyllables(v.pinyin) === targetSyllables);
+                let otherSyllables = available.filter(v => countSyllables(v.pinyin) !== targetSyllables);
+
+                sameSyllables.sort(() => 0.5 - Math.random());
+                otherSyllables.sort(() => 0.5 - Math.random());
+
+                // Pick 2 wrong options prioritizing same syllable count
+                if (sameSyllables.length >= 2) {
+                    options.push(sameSyllables[0], sameSyllables[1]);
+                } else if (sameSyllables.length === 1) {
+                    options.push(sameSyllables[0]);
+                    if (otherSyllables.length >= 1) options.push(otherSyllables[0]);
+                } else {
+                    if (otherSyllables.length >= 1) options.push(otherSyllables[0]);
+                    if (otherSyllables.length >= 2) options.push(otherSyllables[1]);
+                }
+            } else {
+                // Default random choices for other modes
+                available.sort(() => 0.5 - Math.random());
+                if (available.length >= 1) options.push(available[0]);
+                if (available.length >= 2) options.push(available[1]);
+            }
             
             // Shuffle the final 3 choices
             return options.sort(() => 0.5 - Math.random());
         }
 
         function handleChoice(btnElement, isCorrect, vocab) {
-            // Prevent clicking if it's already marked incorrect
+            // Prevent clicking if it's already marked incorrect or session is transitioning
             if (btnElement.disabled) return;
             
             activeSession.currentAttempts++;
@@ -424,7 +474,24 @@
                     attempts: activeSession.currentAttempts
                 });
 
-                // Move to next after delay
+                // --- SHOW 3RD INFO (and style it nicely) ---
+                const extraInfo = document.getElementById('extra-info');
+                let thirdInfo = '';
+                
+                if (activeSession.mode === 'chinese') {
+                    thirdInfo = vocab.english;
+                    extraInfo.className = "mt-4 text-2xl font-medium text-indigo-600 transition-opacity duration-300 opacity-100 min-h-[2rem]";
+                } else if (activeSession.mode === 'pinyin') {
+                    thirdInfo = vocab.chinese;
+                    extraInfo.className = "mt-4 text-5xl font-bold text-indigo-600 transition-opacity duration-300 opacity-100 min-h-[2rem]";
+                } else if (activeSession.mode === 'english') {
+                    thirdInfo = vocab.pinyin;
+                    extraInfo.className = "mt-4 text-2xl font-medium text-indigo-600 transition-opacity duration-300 opacity-100 min-h-[2rem]";
+                }
+
+                extraInfo.textContent = thirdInfo;
+
+                // Move to next after a longer delay so user can read the 3rd info
                 setTimeout(() => {
                     activeSession.currentIndex++;
                     if (activeSession.currentIndex >= activeSession.queue.length) {
@@ -432,7 +499,7 @@
                     } else {
                         renderCurrentCard();
                     }
-                }, 800);
+                }, 1800);
 
             } else {
                 // Wrong Flow
