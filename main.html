@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chinese Flashcard Reviewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for parsing Excel files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        .shake {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        .hide { display: none !important; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-10">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm mb-8">
+        <div class="max-w-4xl mx-auto px-4 py-6 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                </svg>
+                Hànyǔ Flashcards
+            </h1>
+            <div id="stats-header" class="text-sm text-slate-500 font-medium">
+                0 Vocab Words | 0 Reviews
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4">
+        
+        <!-- ================= VIEW: SETUP ================= -->
+        <div id="view-setup" class="space-y-6">
+            
+            <!-- Review Configuration Panel -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-semibold mb-6 border-b pb-2">Start Review Session</h2>
+                
+                <div class="mb-8">
+                    <label class="block text-sm font-medium text-slate-700 mb-2">
+                        Words per session: <span id="slider-val" class="text-indigo-600 font-bold text-lg">10</span>
+                    </label>
+                    <input type="range" id="vocab-slider" min="5" max="30" value="10" 
+                           class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                </div>
+
+                <div class="space-y-3">
+                    <p class="text-sm font-medium text-slate-700 mb-2">Select Mode & Start:</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button onclick="startReview('chinese')" class="flex flex-col items-center p-4 bg-indigo-50 border border-indigo-200 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 text-indigo-700 rounded-lg transition-colors group">
+                            <span class="text-lg font-bold mb-1 group-hover:text-white">From Chinese</span>
+                            <span class="text-xs opacity-80">Show Chinese, pick Pinyin</span>
+                        </button>
+                        <button onclick="startReview('pinyin')" class="flex flex-col items-center p-4 bg-emerald-50 border border-emerald-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 text-emerald-700 rounded-lg transition-colors group">
+                            <span class="text-lg font-bold mb-1 group-hover:text-white">From Pinyin</span>
+                            <span class="text-xs opacity-80">Show Pinyin, pick English</span>
+                        </button>
+                        <button onclick="startReview('english')" class="flex flex-col items-center p-4 bg-amber-50 border border-amber-200 hover:bg-amber-600 hover:text-white hover:border-amber-600 text-amber-700 rounded-lg transition-colors group">
+                            <span class="text-lg font-bold mb-1 group-hover:text-white">From English</span>
+                            <span class="text-xs opacity-80">Show English, pick Chinese</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Management Panel -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-xl font-semibold mb-6 border-b pb-2">Data Management</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Excel Import -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 mb-2">Import Excel Vocabulary</h3>
+                        <p class="text-xs text-slate-500 mb-4">Format: 3 columns (Chinese | Pinyin | English). No headers.</p>
+                        
+                        <label class="block">
+                            <span class="sr-only">Choose excel file</span>
+                            <input type="file" id="excel-upload" accept=".xlsx, .xls" class="block w-full text-sm text-slate-500
+                              file:mr-4 file:py-2 file:px-4
+                              file:rounded-full file:border-0
+                              file:text-sm file:font-semibold
+                              file:bg-indigo-50 file:text-indigo-700
+                              hover:file:bg-indigo-100 cursor-pointer
+                            "/>
+                        </label>
+                    </div>
+
+                    <!-- State Import/Export -->
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-700 mb-2">Memory File (State)</h3>
+                        <p class="text-xs text-slate-500 mb-4">Save or load your vocabulary pool and review history.</p>
+                        
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="exportState()" class="px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-700 transition">
+                                Export Memory (.json)
+                            </button>
+                            
+                            <label class="px-4 py-2 bg-slate-200 text-slate-800 text-sm rounded-lg hover:bg-slate-300 transition cursor-pointer">
+                                <span>Import Memory</span>
+                                <input type="file" id="state-upload" accept=".json" class="hidden" onchange="importState(event)">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VIEW: ACTIVE REVIEW ================= -->
+        <div id="view-review" class="hide max-w-2xl mx-auto">
+            <div class="flex justify-between items-center mb-4">
+                <button onclick="showView('setup')" class="text-slate-500 hover:text-slate-800 font-medium text-sm flex items-center gap-1">
+                    ← Quit Session
+                </button>
+                <div class="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+                    Card <span id="current-card-num">1</span> of <span id="total-card-num">10</span>
+                </div>
+            </div>
+
+            <!-- Main Card -->
+            <div class="bg-white rounded-2xl shadow-md border border-slate-200 p-12 text-center mb-6 min-h-[250px] flex items-center justify-center">
+                <h2 id="main-card-text" class="text-6xl font-bold text-slate-800 tracking-wide">
+                    <!-- Dynamic Content -->
+                </h2>
+            </div>
+
+            <!-- Choices -->
+            <div id="choices-container" class="grid grid-cols-1 gap-4">
+                <!-- Buttons injected via JS -->
+            </div>
+        </div>
+
+        <!-- ================= VIEW: SUMMARY ================= -->
+        <div id="view-summary" class="hide max-w-lg mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">Session Complete!</h2>
+            <p class="text-slate-600 mb-6">You've reviewed <span id="summary-count" class="font-bold">0</span> words this session.</p>
+            
+            <button onclick="showView('setup')" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition">
+                Return to Menu
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Alert Modal for Messages -->
+    <div id="alert-modal" class="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 hide">
+        <div class="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h3 id="alert-title" class="text-lg font-bold mb-2">Message</h3>
+            <p id="alert-msg" class="text-slate-600 mb-6">Something happened.</p>
+            <button onclick="closeAlert()" class="w-full py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">OK</button>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        const defaultVocab = [
+            { id: '1', chinese: '你好', pinyin: 'nǐ hǎo', english: 'hello' },
+            { id: '2', chinese: '谢谢', pinyin: 'xiè xie', english: 'thank you' },
+            { id: '3', chinese: '再见', pinyin: 'zài jiàn', english: 'goodbye' },
+            { id: '4', chinese: '是', pinyin: 'shì', english: 'to be / yes' },
+            { id: '5', chinese: '不', pinyin: 'bù', english: 'no / not' },
+            { id: '6', chinese: '人', pinyin: 'rén', english: 'person / people' },
+            { id: '7', chinese: '水', pinyin: 'shuǐ', english: 'water' },
+            { id: '8', chinese: '吃', pinyin: 'chī', english: 'to eat' },
+            { id: '9', chinese: '大', pinyin: 'dà', english: 'big' },
+            { id: '10', chinese: '好', pinyin: 'hǎo', english: 'good' }
+        ];
+
+        let state = {
+            vocabList: [...defaultVocab],
+            history: [] // { date, vocabId, mode, attempts }
+        };
+
+        // --- Active Session Variables ---
+        let activeSession = {
+            queue: [],
+            currentIndex: 0,
+            mode: 'chinese',
+            currentAttempts: 0
+        };
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateDashboard();
+            
+            // Slider Event
+            const slider = document.getElementById('vocab-slider');
+            const sliderVal = document.getElementById('slider-val');
+            slider.addEventListener('input', (e) => {
+                sliderVal.textContent = e.target.value;
+            });
+
+            // Excel Upload Event
+            document.getElementById('excel-upload').addEventListener('change', handleExcelImport);
+        });
+
+        // --- UI Flow & Views ---
+        function showView(viewName) {
+            document.getElementById('view-setup').classList.add('hide');
+            document.getElementById('view-review').classList.add('hide');
+            document.getElementById('view-summary').classList.add('hide');
+            document.getElementById(`view-${viewName}`).classList.remove('hide');
+            
+            if(viewName === 'setup') updateDashboard();
+        }
+
+        function updateDashboard() {
+            const headerStats = document.getElementById('stats-header');
+            headerStats.innerHTML = `${state.vocabList.length} Vocab Words &nbsp;|&nbsp; ${state.history.length} Reviews`;
+            
+            // Constrain slider max to available vocab
+            const slider = document.getElementById('vocab-slider');
+            const sliderVal = document.getElementById('slider-val');
+            
+            let maxVal = Math.max(5, state.vocabList.length);
+            slider.max = maxVal > 30 ? 30 : maxVal;
+            
+            if(parseInt(slider.value) > parseInt(slider.max)) {
+                slider.value = slider.max;
+            }
+            sliderVal.textContent = slider.value;
+        }
+
+        function showAlert(title, msg) {
+            document.getElementById('alert-title').textContent = title;
+            document.getElementById('alert-msg').textContent = msg;
+            document.getElementById('alert-modal').classList.remove('hide');
+        }
+
+        function closeAlert() {
+            document.getElementById('alert-modal').classList.add('hide');
+        }
+
+        // --- Data Management Logic ---
+        function handleExcelImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Convert to array of arrays
+                    const rows = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                    
+                    let importedCount = 0;
+                    rows.forEach(row => {
+                        // Ensure row has at least 3 columns and isn't a header row like "Chinese | Pinyin"
+                        if (row.length >= 3 && typeof row[0] === 'string' && row[0].trim() !== '') {
+                            const chineseStr = String(row[0]).trim();
+                            // Simple heuristic to skip explicit header row
+                            if (chineseStr.toLowerCase() === 'chinese' || chineseStr.toLowerCase() === 'chinese_text') return;
+                            
+                            const newVocab = {
+                                id: 'v_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                                chinese: chineseStr,
+                                pinyin: String(row[1] || '').trim(),
+                                english: String(row[2] || '').trim()
+                            };
+                            state.vocabList.push(newVocab);
+                            importedCount++;
+                        }
+                    });
+
+                    updateDashboard();
+                    showAlert("Import Successful", `Successfully imported ${importedCount} vocabulary words from Excel.`);
+                } catch (err) {
+                    console.error(err);
+                    showAlert("Import Error", "Failed to parse Excel file. Ensure it is a valid .xlsx file.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            // reset input
+            e.target.value = '';
+        }
+
+        function exportState() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href",     dataStr);
+            downloadAnchorNode.setAttribute("download", "chinese_flashcards_memory.json");
+            document.body.appendChild(downloadAnchorNode); // required for firefox
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importState(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedState = JSON.parse(e.target.result);
+                    if (importedState.vocabList && Array.isArray(importedState.vocabList)) {
+                        state.vocabList = importedState.vocabList;
+                        state.history = importedState.history || [];
+                        updateDashboard();
+                        showAlert("Memory Loaded", "Successfully loaded your vocabulary and review history.");
+                    } else {
+                        throw new Error("Invalid state format");
+                    }
+                } catch (err) {
+                    showAlert("Load Error", "The JSON file is invalid or corrupted.");
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
+        // --- Review Session Logic ---
+        function startReview(mode) {
+            if (state.vocabList.length < 3) {
+                showAlert("Not Enough Data", "You need at least 3 vocabulary words in your pool to start a review.");
+                return;
+            }
+
+            let requestedCount = parseInt(document.getElementById('vocab-slider').value);
+            // Cap to available vocab
+            let sessionCount = Math.min(requestedCount, state.vocabList.length);
+
+            // Shuffle pool and select N items
+            let shuffledPool = [...state.vocabList].sort(() => 0.5 - Math.random());
+            activeSession.queue = shuffledPool.slice(0, sessionCount);
+            activeSession.currentIndex = 0;
+            activeSession.mode = mode;
+
+            document.getElementById('total-card-num').textContent = sessionCount;
+            showView('review');
+            renderCurrentCard();
+        }
+
+        function renderCurrentCard() {
+            activeSession.currentAttempts = 0;
+            const vocab = activeSession.queue[activeSession.currentIndex];
+            document.getElementById('current-card-num').textContent = activeSession.currentIndex + 1;
+
+            // Render Main Card
+            const mainEl = document.getElementById('main-card-text');
+            if (activeSession.mode === 'chinese') {
+                mainEl.textContent = vocab.chinese;
+                mainEl.className = "text-7xl font-bold text-slate-800 tracking-wide"; // larger for Chinese chars
+            } else if (activeSession.mode === 'pinyin') {
+                mainEl.textContent = vocab.pinyin;
+                mainEl.className = "text-5xl font-bold text-slate-800 tracking-wide";
+            } else { // english
+                mainEl.textContent = vocab.english;
+                mainEl.className = "text-5xl font-bold text-slate-800 tracking-wide";
+            }
+
+            // Generate Choices
+            const choices = generateChoices(vocab);
+            const container = document.getElementById('choices-container');
+            container.innerHTML = '';
+
+            choices.forEach(choiceVocab => {
+                const btn = document.createElement('button');
+                btn.className = "choice-btn w-full p-4 bg-white border-2 border-slate-200 rounded-xl text-lg font-medium text-slate-700 hover:bg-slate-50 hover:border-indigo-300 transition-all text-left flex items-center justify-between";
+                
+                let choiceText = '';
+                if (activeSession.mode === 'chinese') choiceText = choiceVocab.pinyin;
+                else if (activeSession.mode === 'pinyin') choiceText = choiceVocab.english;
+                else choiceText = choiceVocab.chinese;
+
+                btn.innerHTML = `<span>${choiceText}</span> <span class="indicator opacity-0 w-6 h-6 flex items-center justify-center rounded-full text-white text-sm"></span>`;
+                
+                btn.onclick = () => handleChoice(btn, choiceVocab.id === vocab.id, vocab);
+                container.appendChild(btn);
+            });
+        }
+
+        function generateChoices(correctVocab) {
+            let options = [correctVocab];
+            let available = state.vocabList.filter(v => v.id !== correctVocab.id);
+            
+            // Shuffle and pick 2 wrong options
+            available.sort(() => 0.5 - Math.random());
+            if (available.length >= 1) options.push(available[0]);
+            if (available.length >= 2) options.push(available[1]);
+            
+            // Shuffle the final 3 choices
+            return options.sort(() => 0.5 - Math.random());
+        }
+
+        function handleChoice(btnElement, isCorrect, vocab) {
+            // Prevent clicking if it's already marked incorrect
+            if (btnElement.disabled) return;
+            
+            activeSession.currentAttempts++;
+            const indicator = btnElement.querySelector('.indicator');
+
+            if (isCorrect) {
+                // Correct Flow
+                btnElement.classList.remove('border-slate-200', 'hover:border-indigo-300', 'hover:bg-slate-50', 'bg-white', 'text-slate-700');
+                btnElement.classList.add('bg-green-100', 'border-green-500', 'text-green-800', 'font-bold');
+                indicator.classList.remove('opacity-0');
+                indicator.classList.add('bg-green-500');
+                indicator.innerHTML = '✓';
+
+                // Disable all buttons
+                document.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
+
+                // Record State
+                state.history.push({
+                    date: new Date().toISOString(),
+                    vocabId: vocab.id,
+                    mode: activeSession.mode,
+                    attempts: activeSession.currentAttempts
+                });
+
+                // Move to next after delay
+                setTimeout(() => {
+                    activeSession.currentIndex++;
+                    if (activeSession.currentIndex >= activeSession.queue.length) {
+                        endSession();
+                    } else {
+                        renderCurrentCard();
+                    }
+                }, 800);
+
+            } else {
+                // Wrong Flow
+                btnElement.disabled = true;
+                btnElement.classList.remove('border-slate-200', 'hover:border-indigo-300', 'hover:bg-slate-50', 'bg-white');
+                btnElement.classList.add('bg-red-50', 'border-red-300', 'text-red-500', 'shake');
+                
+                // Remove shake class after animation completes so it can be re-triggered if needed (though disabled here)
+                setTimeout(() => btnElement.classList.remove('shake'), 500);
+                
+                indicator.classList.remove('opacity-0');
+                indicator.classList.add('bg-red-400');
+                indicator.innerHTML = '✕';
+            }
+        }
+
+        function endSession() {
+            document.getElementById('summary-count').textContent = activeSession.queue.length;
+            showView('summary');
+        }
+    </script>
+</body>
+</html>
