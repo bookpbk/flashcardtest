@@ -19,3 +19,10 @@ Review section
 -if wrong answer is picked, show that option as red and wait for user to select another word. 
 
 -Store the record of vocab reviewed, correct answer and date in the "state"
+
+Additional requirements
+-once answer correctly, show the 3rd info (e.g. in chinese_text to pinyin mode, once answer correctly also display the meaning)
+
+-in chinese to pinyin mode, only get answer choices with the same number of syllables, unless not possible 
+
+-Add a note on the import menu specifying valid data format it can import
